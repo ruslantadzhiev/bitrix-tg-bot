@@ -21,6 +21,14 @@ TARGET_STAGES = {
     "Квалификация пройдена",
 }
 
+STAGE_EMOJI = {
+    "Новая заявка": "1️⃣",
+    "Новая заявка получена": "1️⃣",
+    "Лид Квалифицирован": "2️⃣",
+    "Квалификация пройдена": "2️⃣",
+    "Встреча назначена": "3️⃣",
+}
+
 SOURCE_MAP = {
     "996558551058": "WhatsApp Кыргызстан 996558551058",
     "77009444243": "WhatsApp Казахстан 77009444243",
@@ -117,13 +125,14 @@ async def webhook(request: Request):
                 phone = phones[0].get("VALUE", "—")
 
         deal_link = f"https://neo-style.bitrix24.ru/crm/deal/details/{deal_id}/"
+        emoji = STAGE_EMOJI.get(stage_name, "🔔")
 
         msg = (
-            f"{source}\n\n"
-            f"Этап: {stage_name}\n"
-            f"Клиент: {client_name}\n"
-            f"Телефон: {phone}\n\n"
-            f"Ссылка на сделку: {deal_link}"
+            f"<b>{source}</b>\n\n"
+            f"{emoji} <b>этап:</b> {stage_name}\n"
+            f"<b>Клиент:</b> {client_name}\n"
+            f"<b>Телефон:</b> {phone}\n\n"
+            f"<b>Ссылка на сделку:</b> {deal_link}"
         )
 
         await send_telegram(msg)
