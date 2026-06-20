@@ -30,9 +30,9 @@ STAGE_EMOJI = {
 }
 
 SOURCE_MAP = {
-    "996558551058": "WhatsApp Кыргызстан 996558551058",
-    "77009444243": "WhatsApp Казахстан 77009444243",
-    "77775901319": "WhatsApp Астана 77775901319",
+    "996558551058": "🇰🇬 WhatsApp Кыргызстан 996558551058",
+    "77009444243": "🇰🇿 WhatsApp Алматы 77009444243",
+    "77775901319": "🇰🇿 WhatsApp Астана 77775901319",
 }
 
 
@@ -129,9 +129,9 @@ async def webhook(request: Request):
 
         msg = (
             f"<b>{source}</b>\n\n"
-            f"{emoji} <b>этап:</b> {stage_name}\n"
-            f"<b>Клиент:</b> {client_name}\n"
-            f"<b>Телефон:</b> {phone}\n\n"
+           f"{emoji} <b>этап:</b> {stage_name}\n"
+            f"👤<b>Клиент:</b> {client_name}\n"
+            f"☎️<b>Телефон:</b> {phone}\n\n"
             f"<b>Ссылка на сделку:</b> {deal_link}"
         )
 
