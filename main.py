@@ -100,14 +100,17 @@ async def webhook(request: Request):
         category_id = deal.get("CATEGORY_ID", "0")
         stage_name = await get_stage_name(stage_id, category_id)
 
-        if stage_name not in TARGET_STAGES:
-            logger.info(f"Stage '{stage_name}' not in watch list, skipping")
+                if stage_name not in TARGET_STAGES:
+            logger.info(f"SKIP stage: '{stage_name}'")
             return JSONResponse({"ok": True, "skip": "stage not watched"})
 
         title = deal.get("TITLE", "—")
+        logger.info(f"Deal title: '{title}', stage: '{stage_name}'")
         source = detect_source(title)
         if source is None:
+            logger.info(f"SKIP source: title='{title}'")
             return JSONResponse({"ok": True, "skip": "source not in watch list"})
+
 
         client_name = title.split(" - ")[0].strip() if " - " in title else title
 
