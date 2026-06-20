@@ -13,7 +13,13 @@ TELEGRAM_TOKEN = os.environ["TELEGRAM_TOKEN"]
 TELEGRAM_CHAT_ID = os.environ["TELEGRAM_CHAT_ID"]
 BITRIX_WEBHOOK = os.environ["BITRIX_WEBHOOK"]
 
-TARGET_STAGES = {"Новая заявка", "Лид Квалифицирован", "Встреча назначена"}
+TARGET_STAGES = {
+    "Новая заявка",
+    "Лид Квалифицирован",
+    "Встреча назначена",
+    "Новая заявка получена",
+    "Квалификация пройдена",
+}
 
 SOURCE_MAP = {
     "996558551058": "WhatsApp Кыргызстан 996558551058",
