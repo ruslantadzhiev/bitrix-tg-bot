@@ -61,16 +61,6 @@ async def get_stage_name(stage_id: str, category_id: str) -> str:
     return stage_id
 
 
-async def get_manager_name(user_id: str) -> str:
-    if not user_id:
-        return "—"
-    users = await bitrix_call("user.get", {"ID": user_id})
-    if isinstance(users, list) and users:
-        u = users[0]
-        return f"{u.get('NAME', '')} {u.get('LAST_NAME', '')}".strip()
-    return f"ID {user_id}"
-
-
 async def send_telegram(text: str):
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
     async with httpx.AsyncClient(timeout=10) as client:
@@ -101,25 +91,19 @@ async def webhook(request: Request):
         category_id = deal.get("CATEGORY_ID", "0")
         stage_name = await get_stage_name(stage_id, category_id)
 
-                if stage_name not in TARGET_STAGES:
+        if stage_name not in TARGET_STAGES:
             logger.info(f"SKIP stage: '{stage_name}'")
             return JSONResponse({"ok": True, "skip": "stage not watched"})
 
-                title = deal.get("TITLE", "—")
+        title = deal.get("TITLE", "—")
         source_desc = deal.get("SOURCE_DESCRIPTION", "")
         logger.info(f"Deal title: '{title}', source_desc: '{source_desc}', stage: '{stage_name}'")
         source = detect_source(title, source_desc)
         if source is None:
-            logger.info(f"SKIP source: title='{title}'")
+            logger.info(f"SKIP source not found")
             return JSONResponse({"ok": True, "skip": "source not in watch list"})
 
-
         client_name = title.split(" - ")[0].strip() if " - " in title else title
-
-        assigned_id = deal.get("ASSIGNED_BY_ID", "")
-        first = deal.get("ASSIGNED_BY_NAME", "")
-        last = deal.get("ASSIGNED_BY_LAST_NAME", "")
-        manager = f"{first} {last}".strip() or await get_manager_name(assigned_id)
 
         phone = "—"
         contact_id = deal.get("CONTACT_ID")
@@ -134,7 +118,7 @@ async def webhook(request: Request):
 
         msg = (
             f"<b>{source}</b>\n\n"
-           f"{emoji} <b>этап:</b> {stage_name}\n"
+            f"{emoji} <b>этап:</b> {stage_name}\n"
             f"👤<b>Клиент:</b> {client_name}\n"
             f"☎️<b>Телефон:</b> {phone}\n\n"
             f"<b>Ссылка на сделку:</b> {deal_link}"
