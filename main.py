@@ -22,11 +22,11 @@ SOURCE_MAP = {
 }
 
 
-def detect_source(title: str) -> str:
+def detect_source(title: str) -> str | None:
     for key, label in SOURCE_MAP.items():
         if key in title:
             return label
-    return "Источник не определён"
+    return None
 
 
 async def bitrix_call(method: str, params: dict) -> dict | list:
@@ -92,6 +92,9 @@ async def webhook(request: Request):
 
         title = deal.get("TITLE", "—")
         source = detect_source(title)
+        if source is None:
+            return JSONResponse({"ok": True, "skip": "source not in watch list"})
+
         client_name = title.split(" - ")[0].strip() if " - " in title else title
 
         assigned_id = deal.get("ASSIGNED_BY_ID", "")
