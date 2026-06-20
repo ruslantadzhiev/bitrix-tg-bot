@@ -11,14 +11,14 @@ app = FastAPI()
 
 TELEGRAM_TOKEN = os.environ["TELEGRAM_TOKEN"]
 TELEGRAM_CHAT_ID = os.environ["TELEGRAM_CHAT_ID"]
-BITRIX_WEBHOOK = os.environ["BITRIX_WEBHOOK"]  # https://neo-style.bitrix24.ru/rest/1/TOKEN
+BITRIX_WEBHOOK = os.environ["BITRIX_WEBHOOK"]
 
 TARGET_STAGES = {"Новая заявка", "Лид Квалифицирован", "Встреча назначена"}
 
 SOURCE_MAP = {
-    "996558551058": "📱 WhatsApp Кыргызстан",
-    "77009444243": "📱 WhatsApp Казахстан",
-    "77775901319": "📱 WhatsApp Астана",
+    "996558551058": "WhatsApp Кыргызстан 996558551058",
+    "77009444243": "WhatsApp Казахстан 77009444243",
+    "77775901319": "WhatsApp Астана 77775901319",
 }
 
 
@@ -26,7 +26,7 @@ def detect_source(title: str) -> str:
     for key, label in SOURCE_MAP.items():
         if key in title:
             return label
-    return "❓ Источник не определён"
+    return "Источник не определён"
 
 
 async def bitrix_call(method: str, params: dict) -> dict | list:
@@ -88,16 +88,17 @@ async def webhook(request: Request):
 
         if stage_name not in TARGET_STAGES:
             logger.info(f"Stage '{stage_name}' not in watch list, skipping")
-            return JSONResponse({"ok": True, "skip": f"stage not watched"})
+            return JSONResponse({"ok": True, "skip": "stage not watched"})
 
         title = deal.get("TITLE", "—")
         source = detect_source(title)
         client_name = title.split(" - ")[0].strip() if " - " in title else title
 
         assigned_id = deal.get("ASSIGNED_BY_ID", "")
-        manager = await get_manager_name(assigned_id)
+        first = deal.get("ASSIGNED_BY_NAME", "")
+        last = deal.get("ASSIGNED_BY_LAST_NAME", "")
+        manager = f"{first} {last}".strip() or await get_manager_name(assigned_id)
 
-        # Phone from linked contact
         phone = "—"
         contact_id = deal.get("CONTACT_ID")
         if contact_id:
@@ -106,13 +107,14 @@ async def webhook(request: Request):
             if phones:
                 phone = phones[0].get("VALUE", "—")
 
+        deal_link = f"https://neo-style.bitrix24.ru/crm/deal/details/{deal_id}/"
+
         msg = (
-            f"🔔 <b>Изменение этапа сделки</b>\n\n"
-            f"{source}\n"
-            f"👤 <b>Клиент:</b> {client_name}\n"
-            f"📞 <b>Телефон:</b> {phone}\n"
-            f"📍 <b>Этап:</b> {stage_name}\n"
-            f"👨‍💼 <b>Менеджер:</b> {manager}"
+            f"{source}\n\n"
+            f"Этап: {stage_name}\n"
+            f"Клиент: {client_name}\n"
+            f"Телефон: {phone}\n\n"
+            f"Ссылка на сделку: {deal_link}"
         )
 
         await send_telegram(msg)
