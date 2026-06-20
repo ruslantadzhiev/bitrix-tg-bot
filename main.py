@@ -36,9 +36,10 @@ SOURCE_MAP = {
 }
 
 
-def detect_source(title: str) -> str | None:
+def detect_source(title: str, source_desc: str = "") -> str | None:
+    text = f"{title} {source_desc}"
     for key, label in SOURCE_MAP.items():
-        if key in title:
+        if key in text:
             return label
     return None
 
@@ -104,9 +105,10 @@ async def webhook(request: Request):
             logger.info(f"SKIP stage: '{stage_name}'")
             return JSONResponse({"ok": True, "skip": "stage not watched"})
 
-        title = deal.get("TITLE", "—")
-        logger.info(f"Deal title: '{title}', stage: '{stage_name}'")
-        source = detect_source(title)
+                title = deal.get("TITLE", "—")
+        source_desc = deal.get("SOURCE_DESCRIPTION", "")
+        logger.info(f"Deal title: '{title}', source_desc: '{source_desc}', stage: '{stage_name}'")
+        source = detect_source(title, source_desc)
         if source is None:
             logger.info(f"SKIP source: title='{title}'")
             return JSONResponse({"ok": True, "skip": "source not in watch list"})
