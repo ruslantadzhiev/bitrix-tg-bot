@@ -80,8 +80,7 @@ async def webhook(request: Request):
         data = dict(form)
         logger.info(f"Received: {data}")
 
-        # Поддержка обоих форматов: автоматизация и старый вебхук
-         deal_id = data.get("deal_id") or data.get("data[FIELDS][ID]")
+        deal_id = data.get("deal_id") or data.get("data[FIELDS][ID]")
         if not deal_id:
             doc = data.get("document_id[2]", "")
             if doc.startswith("DEAL_"):
