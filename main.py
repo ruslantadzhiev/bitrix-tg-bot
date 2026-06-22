@@ -1,4 +1,5 @@
 import os
+import json
 import logging
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
@@ -13,12 +14,22 @@ TELEGRAM_TOKEN = os.environ["TELEGRAM_TOKEN"]
 TELEGRAM_CHAT_ID = os.environ["TELEGRAM_CHAT_ID"]
 BITRIX_WEBHOOK = os.environ["BITRIX_WEBHOOK"]
 
+CACHE_FILE = "/data/notified_cache.json"
+
 TARGET_STAGES = {
+    # Дизайн/Архитектура Бишкек
     "Новая заявка",
     "Лид Квалифицирован",
     "Встреча назначена",
+    "Встреча состоялась",
+    "Предварительно Да",
+    "Сделка провалена",
+    "Сделка успешна",
+    # Воронка Казахстан
     "Новая заявка получена",
     "Квалификация пройдена",
+    "Встреча проведена",
+    "Закрыто и не реализовано",
 }
 
 STAGE_EMOJI = {
@@ -27,7 +38,15 @@ STAGE_EMOJI = {
     "Лид Квалифицирован": "2️⃣",
     "Квалификация пройдена": "2️⃣",
     "Встреча назначена": "3️⃣",
+    "Встреча состоялась": "4️⃣",
+    "Встреча проведена": "4️⃣",
+    "Предварительно Да": "5️⃣",
+    "Сделка провалена": "❌",
+    "Закрыто и не реализовано": "❌",
+    "Сделка успешна": "🏆",
 }
+
+AMOUNT_STAGES = {"Сделка успешна"}
 
 SOURCE_MAP = {
     "996558551058": "🇰🇬 WhatsApp Кыргызстан 996558551058",
@@ -37,12 +56,38 @@ SOURCE_MAP = {
 }
 
 
+def load_cache() -> set:
+    try:
+        with open(CACHE_FILE, "r") as f:
+            return set(json.load(f))
+    except Exception:
+        return set()
+
+
+def save_cache(cache: set):
+    try:
+        os.makedirs(os.path.dirname(CACHE_FILE), exist_ok=True)
+        with open(CACHE_FILE, "w") as f:
+            json.dump(list(cache), f)
+    except Exception:
+        logger.exception("Failed to save cache")
+
+
 def detect_source(title: str, source_desc: str = "") -> str | None:
     text = f"{title} {source_desc}"
     for key, label in SOURCE_MAP.items():
         if key in text:
             return label
     return None
+
+
+def format_amount(amount: str, currency: str) -> str:
+    try:
+        value = float(amount)
+        formatted = f"{value:,.0f}".replace(",", " ")
+        return f"{formatted} {currency}"
+    except Exception:
+        return f"{amount} {currency}"
 
 
 async def bitrix_call(method: str, params: dict) -> dict | list:
@@ -62,6 +107,16 @@ async def get_stage_name(stage_id: str, category_id: str) -> str:
     return stage_id
 
 
+async def get_manager_name(user_id: str) -> str:
+    if not user_id:
+        return "—"
+    users = await bitrix_call("user.get", {"ID": user_id})
+    if isinstance(users, list) and users:
+        u = users[0]
+        return f"{u.get('NAME', '')} {u.get('LAST_NAME', '')}".strip()
+    return f"ID {user_id}"
+
+
 async def send_telegram(text: str):
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
     async with httpx.AsyncClient(timeout=10) as client:
@@ -78,7 +133,7 @@ async def webhook(request: Request):
     try:
         form = await request.form()
         data = dict(form)
-        logger.info(f"Received: {data}")
+        logger.info(f"Received webhook: {data}")
 
         deal_id = data.get("deal_id") or data.get("data[FIELDS][ID]")
         if not deal_id:
@@ -97,15 +152,28 @@ async def webhook(request: Request):
         stage_name = await get_stage_name(stage_id, category_id)
 
         if stage_name not in TARGET_STAGES:
+            logger.info(f"SKIP stage: '{stage_name}'")
             return JSONResponse({"ok": True, "skip": "stage not watched"})
+
+        cache_key = f"{deal_id}:{stage_name}"
+        cache = load_cache()
+        if cache_key in cache:
+            logger.info(f"SKIP duplicate: deal {deal_id}, stage '{stage_name}'")
+            return JSONResponse({"ok": True, "skip": "duplicate"})
 
         title = deal.get("TITLE", "—")
         source_desc = deal.get("SOURCE_DESCRIPTION", "")
         source = detect_source(title, source_desc)
         if source is None:
+            logger.info(f"SKIP source not found: title='{title}'")
             return JSONResponse({"ok": True, "skip": "source not in watch list"})
 
         client_name = title.split(" - ")[0].strip() if " - " in title else title
+
+        assigned_id = deal.get("ASSIGNED_BY_ID", "")
+        first = deal.get("ASSIGNED_BY_NAME", "")
+        last = deal.get("ASSIGNED_BY_LAST_NAME", "")
+        manager = f"{first} {last}".strip() or await get_manager_name(assigned_id)
 
         phone = "—"
         contact_id = deal.get("CONTACT_ID")
@@ -122,12 +190,21 @@ async def webhook(request: Request):
             f"<b>{source}</b>\n\n"
             f"{emoji} <b>этап:</b> {stage_name}\n"
             f"👤<b>Клиент:</b> {client_name}\n"
-            f"☎️<b>Телефон:</b> {phone}\n\n"
-            f"<b>Ссылка на сделку:</b> {deal_link}"
+            f"☎️<b>Телефон:</b> {phone}\n"
         )
 
+        if stage_name in AMOUNT_STAGES:
+            amount = deal.get("OPPORTUNITY", "")
+            currency = deal.get("CURRENCY_ID", "")
+            if amount:
+                msg += f"💰<b>Сумма:</b> {format_amount(amount, currency)}\n"
+
+        msg += f"\n<b>Ссылка на сделку:</b> {deal_link}"
+
         await send_telegram(msg)
-        logger.info(f"Sent: deal {deal_id}, stage '{stage_name}'")
+        cache.add(cache_key)
+        save_cache(cache)
+        logger.info(f"Notification sent for deal {deal_id}, stage: {stage_name}")
         return JSONResponse({"ok": True})
 
     except Exception as e:
