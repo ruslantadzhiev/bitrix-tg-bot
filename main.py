@@ -14,7 +14,7 @@ TELEGRAM_TOKEN = os.environ["TELEGRAM_TOKEN"]
 TELEGRAM_CHAT_ID = os.environ["TELEGRAM_CHAT_ID"]
 BITRIX_WEBHOOK = os.environ["BITRIX_WEBHOOK"]
 
-CACHE_FILE = "/tmp/notified_cache.json"
+CACHE_FILE = "/data/notified_cache.json"
 
 TARGET_STAGES = {
     "Новая заявка",
