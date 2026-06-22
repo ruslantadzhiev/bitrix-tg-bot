@@ -1,4 +1,5 @@
 import os
+import json
 import logging
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
@@ -12,6 +13,8 @@ app = FastAPI()
 TELEGRAM_TOKEN = os.environ["TELEGRAM_TOKEN"]
 TELEGRAM_CHAT_ID = os.environ["TELEGRAM_CHAT_ID"]
 BITRIX_WEBHOOK = os.environ["BITRIX_WEBHOOK"]
+
+CACHE_FILE = "/tmp/notified_cache.json"
 
 TARGET_STAGES = {
     "Новая заявка",
@@ -36,7 +39,21 @@ SOURCE_MAP = {
     "7 777 590 1319": "🇰🇿 WhatsApp Астана 77775901319",
 }
 
-notified_cache: dict[str, str] = {}
+
+def load_cache() -> dict:
+    try:
+        with open(CACHE_FILE, "r") as f:
+            return json.load(f)
+    except Exception:
+        return {}
+
+
+def save_cache(cache: dict):
+    try:
+        with open(CACHE_FILE, "w") as f:
+            json.dump(cache, f)
+    except Exception as e:
+        logger.warning(f"Cache save error: {e}")
 
 
 def detect_source(title: str, source_desc: str = "") -> str | None:
@@ -96,7 +113,8 @@ async def webhook(request: Request):
         if stage_name not in TARGET_STAGES:
             return JSONResponse({"ok": True, "skip": "stage not watched"})
 
-        if notified_cache.get(deal_id) == stage_name:
+        cache = load_cache()
+        if cache.get(deal_id) == stage_name:
             logger.info(f"SKIP duplicate: deal {deal_id}, stage '{stage_name}'")
             return JSONResponse({"ok": True, "skip": "duplicate"})
 
@@ -128,7 +146,8 @@ async def webhook(request: Request):
         )
 
         await send_telegram(msg)
-        notified_cache[deal_id] = stage_name
+        cache[deal_id] = stage_name
+        save_cache(cache)
         logger.info(f"Sent: deal {deal_id}, stage '{stage_name}'")
         return JSONResponse({"ok": True})
 
