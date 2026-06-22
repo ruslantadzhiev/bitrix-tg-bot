@@ -81,7 +81,11 @@ async def webhook(request: Request):
         logger.info(f"Received: {data}")
 
         # Поддержка обоих форматов: автоматизация и старый вебхук
-        deal_id = data.get("deal_id") or data.get("data[FIELDS][ID]")
+         deal_id = data.get("deal_id") or data.get("data[FIELDS][ID]")
+        if not deal_id:
+            doc = data.get("document_id[2]", "")
+            if doc.startswith("DEAL_"):
+                deal_id = doc.replace("DEAL_", "")
         if not deal_id:
             return JSONResponse({"ok": True, "skip": "no deal id"})
 
