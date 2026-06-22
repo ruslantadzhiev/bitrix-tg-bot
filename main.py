@@ -48,6 +48,20 @@ STAGE_EMOJI = {
 
 AMOUNT_STAGES = {"Сделка успешна"}
 
+STAGE_TO_FUNNEL = {
+    "Новая заявка": "Бишкек",
+    "Лид Квалифицирован": "Бишкек",
+    "Встреча назначена": "Бишкек",
+    "Встреча состоялась": "Бишкек",
+    "Предварительно Да": "Бишкек",
+    "Сделка провалена": "Бишкек",
+    "Сделка успешна": "Бишкек",
+    "Новая заявка получена": "Казахстан",
+    "Квалификация пройдена": "Казахстан",
+    "Встреча проведена": "Казахстан",
+    "Закрыто и не реализовано": "Казахстан",
+}
+
 SOURCE_MAP = {
     "996558551058": "🇰🇬 WhatsApp Кыргызстан 996558551058",
     "77009444243": "🇰🇿 WhatsApp Алматы 77009444243",
@@ -56,19 +70,22 @@ SOURCE_MAP = {
 }
 
 
-def load_cache() -> set:
+def load_cache() -> tuple[set, dict]:
     try:
         with open(CACHE_FILE, "r") as f:
-            return set(json.load(f))
+            raw = json.load(f)
+            if isinstance(raw, list):
+                return set(raw), {}
+            return set(raw.get("keys", [])), raw.get("funnels", {})
     except Exception:
-        return set()
+        return set(), {}
 
 
-def save_cache(cache: set):
+def save_cache(keys: set, funnels: dict):
     try:
         os.makedirs(os.path.dirname(CACHE_FILE), exist_ok=True)
         with open(CACHE_FILE, "w") as f:
-            json.dump(list(cache), f)
+            json.dump({"keys": list(keys), "funnels": funnels}, f)
     except Exception:
         logger.exception("Failed to save cache")
 
@@ -156,7 +173,7 @@ async def webhook(request: Request):
             return JSONResponse({"ok": True, "skip": "stage not watched"})
 
         cache_key = f"{deal_id}:{stage_name}"
-        cache = load_cache()
+        cache, funnels = load_cache()
         if cache_key in cache:
             logger.info(f"SKIP duplicate: deal {deal_id}, stage '{stage_name}'")
             return JSONResponse({"ok": True, "skip": "duplicate"})
@@ -186,8 +203,15 @@ async def webhook(request: Request):
         deal_link = f"https://neo-style.bitrix24.ru/crm/deal/details/{deal_id}/"
         emoji = STAGE_EMOJI.get(stage_name, "🔔")
 
+        curr_funnel = STAGE_TO_FUNNEL.get(stage_name, "")
+        prev_funnel = funnels.get(deal_id, "")
+        if prev_funnel and prev_funnel != curr_funnel:
+            source_header = f"{source}\n📂 <i>{prev_funnel} ➡️ {curr_funnel}</i>"
+        else:
+            source_header = source
+
         msg = (
-            f"<b>{source}</b>\n\n"
+            f"<b>{source_header}</b>\n\n"
             f"{emoji} <b>этап:</b> {stage_name}\n"
             f"👤<b>Клиент:</b> {client_name}\n"
             f"☎️<b>Телефон:</b> {phone}\n"
@@ -203,7 +227,9 @@ async def webhook(request: Request):
 
         await send_telegram(msg)
         cache.add(cache_key)
-        save_cache(cache)
+        if curr_funnel:
+            funnels[deal_id] = curr_funnel
+        save_cache(cache, funnels)
         logger.info(f"Notification sent for deal {deal_id}, stage: {stage_name}")
         return JSONResponse({"ok": True})
 
