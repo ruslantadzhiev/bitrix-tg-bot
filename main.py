@@ -36,6 +36,8 @@ SOURCE_MAP = {
     "7 777 590 1319": "🇰🇿 WhatsApp Астана 77775901319",
 }
 
+notified_cache: dict[str, str] = {}
+
 
 def detect_source(title: str, source_desc: str = "") -> str | None:
     text = f"{title} {source_desc}"
@@ -78,7 +80,6 @@ async def webhook(request: Request):
     try:
         form = await request.form()
         data = dict(form)
-        logger.info(f"Received webhook: {data}")
 
         deal_id = data.get("data[FIELDS][ID]")
         if not deal_id:
@@ -93,15 +94,16 @@ async def webhook(request: Request):
         stage_name = await get_stage_name(stage_id, category_id)
 
         if stage_name not in TARGET_STAGES:
-            logger.info(f"SKIP stage: '{stage_name}'")
             return JSONResponse({"ok": True, "skip": "stage not watched"})
+
+        if notified_cache.get(deal_id) == stage_name:
+            logger.info(f"SKIP duplicate: deal {deal_id}, stage '{stage_name}'")
+            return JSONResponse({"ok": True, "skip": "duplicate"})
 
         title = deal.get("TITLE", "—")
         source_desc = deal.get("SOURCE_DESCRIPTION", "")
-        logger.info(f"Deal title: '{title}', source_desc: '{source_desc}', stage: '{stage_name}'")
         source = detect_source(title, source_desc)
         if source is None:
-            logger.info(f"SKIP source not found")
             return JSONResponse({"ok": True, "skip": "source not in watch list"})
 
         client_name = title.split(" - ")[0].strip() if " - " in title else title
@@ -126,7 +128,8 @@ async def webhook(request: Request):
         )
 
         await send_telegram(msg)
-        logger.info(f"Notification sent for deal {deal_id}, stage: {stage_name}")
+        notified_cache[deal_id] = stage_name
+        logger.info(f"Sent: deal {deal_id}, stage '{stage_name}'")
         return JSONResponse({"ok": True})
 
     except Exception as e:
