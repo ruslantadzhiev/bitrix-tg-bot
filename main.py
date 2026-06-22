@@ -1,5 +1,4 @@
 import os
-import json
 import logging
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
@@ -13,8 +12,6 @@ app = FastAPI()
 TELEGRAM_TOKEN = os.environ["TELEGRAM_TOKEN"]
 TELEGRAM_CHAT_ID = os.environ["TELEGRAM_CHAT_ID"]
 BITRIX_WEBHOOK = os.environ["BITRIX_WEBHOOK"]
-
-CACHE_FILE = "/data/notified_cache.json"
 
 TARGET_STAGES = {
     "Новая заявка",
@@ -38,22 +35,6 @@ SOURCE_MAP = {
     "77775901319": "🇰🇿 WhatsApp Астана 77775901319",
     "7 777 590 1319": "🇰🇿 WhatsApp Астана 77775901319",
 }
-
-
-def load_cache() -> dict:
-    try:
-        with open(CACHE_FILE, "r") as f:
-            return json.load(f)
-    except Exception:
-        return {}
-
-
-def save_cache(cache: dict):
-    try:
-        with open(CACHE_FILE, "w") as f:
-            json.dump(cache, f)
-    except Exception as e:
-        logger.warning(f"Cache save error: {e}")
 
 
 def detect_source(title: str, source_desc: str = "") -> str | None:
@@ -97,8 +78,10 @@ async def webhook(request: Request):
     try:
         form = await request.form()
         data = dict(form)
+        logger.info(f"Received: {data}")
 
-        deal_id = data.get("data[FIELDS][ID]")
+        # Поддержка обоих форматов: автоматизация и старый вебхук
+        deal_id = data.get("deal_id") or data.get("data[FIELDS][ID]")
         if not deal_id:
             return JSONResponse({"ok": True, "skip": "no deal id"})
 
@@ -112,11 +95,6 @@ async def webhook(request: Request):
 
         if stage_name not in TARGET_STAGES:
             return JSONResponse({"ok": True, "skip": "stage not watched"})
-
-        cache = load_cache()
-        if cache.get(deal_id) == stage_name:
-            logger.info(f"SKIP duplicate: deal {deal_id}, stage '{stage_name}'")
-            return JSONResponse({"ok": True, "skip": "duplicate"})
 
         title = deal.get("TITLE", "—")
         source_desc = deal.get("SOURCE_DESCRIPTION", "")
@@ -146,8 +124,6 @@ async def webhook(request: Request):
         )
 
         await send_telegram(msg)
-        cache[deal_id] = stage_name
-        save_cache(cache)
         logger.info(f"Sent: deal {deal_id}, stage '{stage_name}'")
         return JSONResponse({"ok": True})
 
