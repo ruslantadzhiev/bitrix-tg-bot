@@ -48,6 +48,11 @@ STAGE_EMOJI = {
 
 AMOUNT_STAGES = {"Сделка успешна"}
 
+ALLOWED_SITE_SOURCES = {
+    "Заявка Бишкек с сайта Артём",
+    "Заявка Алматы с сайта Артём",
+}
+
 STAGE_TO_FUNNEL = {
     "Новая заявка": "Бишкек",
     "Лид Квалифицирован": "Бишкек",
@@ -105,6 +110,18 @@ def format_amount(amount: str, currency: str) -> str:
         return f"{formatted} {currency}"
     except Exception:
         return f"{amount} {currency}"
+
+
+async def get_site_source_name(source_id: str) -> str | None:
+    if not source_id:
+        return None
+    statuses = await bitrix_call("crm.status.list", {"filter[ENTITY_ID]": "SOURCE"})
+    if isinstance(statuses, list):
+        for s in statuses:
+            if s.get("STATUS_ID") == source_id:
+                name = s.get("NAME", "")
+                return name if name in ALLOWED_SITE_SOURCES else None
+    return None
 
 
 async def bitrix_call(method: str, params: dict) -> dict | list:
@@ -180,9 +197,12 @@ async def webhook(request: Request):
 
         title = deal.get("TITLE", "—")
         source_desc = deal.get("SOURCE_DESCRIPTION", "")
+        source_id = deal.get("SOURCE_ID", "")
         source = detect_source(title, source_desc)
         if source is None:
-            logger.info(f"SKIP source not found: title='{title}'")
+            source = await get_site_source_name(source_id)
+        if source is None:
+            logger.info(f"SKIP source not found: title='{title}', SOURCE_ID='{source_id}'")
             return JSONResponse({"ok": True, "skip": "source not in watch list"})
 
         client_name = title.split(" - ")[0].strip() if " - " in title else title
